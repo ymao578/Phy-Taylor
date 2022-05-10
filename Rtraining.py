@@ -7,15 +7,13 @@ import tensorflow as tf
 
 import tensorflow_constrained_optimization as tfco
 
-#import TaylorNN as tnn
-
 import RTaylorNN as tnn
 
 
 #Fromulate Consraint Optimazation
 class ExampleProblem(tfco.ConstrainedMinimizationProblem):
     
-    def __init__(self,y, ly, params, upper_bound):
+    def __init__(self, y, ly, params, upper_bound):
 #         self._x = x
         self._y = y
         self._ly = ly
@@ -59,7 +57,7 @@ class ExampleProblem(tfco.ConstrainedMinimizationProblem):
 
 
 #Define loss funcions for training
-def define_loss(y, ly,params,trainable_var):
+def define_loss(y, ly, params, trainable_var):
     """Define the (unregularized) loss functions for the training.
 
     Arguments:
@@ -91,7 +89,6 @@ print(tf.__version__) x  -- placeholder for input: x(k)
 
     # Embedding dynamics into uncheck model, learning via prediction
     loss1 = params['dynamics_lam']*tf.reduce_mean(tf.square(y-ly))
-    #loss2 = params['future_lam']*tf.reduce_mean(tf.square(z-lz))
     
     #if params['dynamics_lam']:
      #   l1_regularizer = tf.contrib.layers.l1_regularizer(scale=params['L1_lam'], scope=None)
@@ -181,7 +178,7 @@ def try_exp(params):
     #optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
     #train_op = optimizer.minimize(my_problem.objective(), var_list = trainable_var)
     
-    optimizer = tf.train.AdamOptimizer(learning_rate=0.00001)
+    optimizer = tf.train.AdamOptimizer(learning_rate=0.000005)
 
     #optimizer = tf.compat.v1.train.AdagradOptimizer(learning_rate=0.001)
     
@@ -242,13 +239,10 @@ def try_exp(params):
         if (params['number_of_data files_for_training'] > 1) or (f == 0):  # don't keep reloading data if always same; 
             
             # load the raw data of total data_traint_len files################################################################# 
-            data_train_x = np.loadtxt(('./data/%s_train%d_x.csv' % (params['data_name'], file_num)), delimiter=',',
+            data_train_x = np.loadtxt(('./trainingdata1/%s_X%d.csv' % (params['data_name'], file_num)), delimiter=',',
                                         dtype=np.float32)
-            data_train_ly = np.loadtxt(('./data/%s_train%d_y.csv' % (params['data_name'], file_num)), delimiter=',',
+            data_train_ly = np.loadtxt(('./trainingdata1/%s_Y%d.csv' % (params['data_name'], file_num)), delimiter=',',
                                         dtype=np.float32)
-            #data_train_lz = np.loadtxt(('./data/%s_lz%d.csv' % (params['data_name'], file_num)), delimiter=',',
-            #                            dtype=np.float32)
-
             #Total len in 1 training file
             total_length = data_train_x.shape[0]
             num_batches = int(np.floor(total_length / params['batch_size']))
@@ -259,7 +253,7 @@ def try_exp(params):
 
         data_train_x  = data_train_x[ind, :]
         data_train_ly = data_train_ly[ind, :]
-        #data_train_lz = data_train_lz[ind, :]
+
         
         #LEN = data_train_x.shape[0]
         #data_train_x = data_train_x.reshape([LEN,params['Xwidth']])
@@ -273,7 +267,7 @@ def try_exp(params):
                 offset = 0 
             batch_data_train_x = data_train_x[offset:(offset + params['batch_size']), :]
             batch_data_train_ly = data_train_ly[offset:(offset + params['batch_size']), :]
-            #batch_data_train_lz = data_train_lz[offset:(offset + params['batch_size']), :]
+
             
             feed_dict_train = {x: np.transpose(batch_data_train_x), ly: np.transpose(batch_data_train_ly)}
             feed_dict_train_loss = {x: np.transpose(batch_data_train_x), ly: np.transpose(batch_data_train_ly)}

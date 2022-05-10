@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np 
+import PhyAct as pha
 
 #=================================================================================================================
 #=================================================================================================================
@@ -8,7 +9,8 @@ import numpy as np
 #=================================================================================================================
 
 ##Construct TaylorNN ######################################################################################################################
-def taylor_nn(prev_layer, weights, biases, com_type1, com_type2, act_type, num_of_layers, expansion_order, name ='U'):
+def taylor_nn(prev_layer, weights, phyweights, unkweights, biases, inx_phy, inx_unk, com_type1, com_type2, act_type, num_of_layers,                       expansion_order, name ='U'):
+    
     """Apply a NN to input from previous later
 
     Arguments:
@@ -70,13 +72,19 @@ def taylor_nn(prev_layer, weights, biases, com_type1, com_type2, act_type, num_o
         ###################################################################################################################################
           
         #Compute T.NN output###
-        prev_layer = tf.matmul(weights['W%s%d' % (name,i + 1)],input_epd) + biases['b%s%d' % (name,i + 1)]   
-        if act_type['act%s%d' % (name,i + 1)] == 'sigmoid':
-            prev_layer = tf.sigmoid(prev_layer)
-        elif act_type['act%s%d' % (name,i + 1)] == 'relu':
-            prev_layer = tf.nn.relu(prev_layer)
+        
+        pre_weight = tf.multiply(weights['W%s%d' % (name,i + 1)], unkweights['W%s%d' % (name,i + 1)]) + phyweights['W%s%d' % (name,i + 1)]
+            
+        pre_bias   = tf.multiply(biases['b%s%d' % (name,i + 1)], inx_unk['b%s%d' % (name,i + 1)])
+            
+        prev_layer = tf.matmul(pre_weight, input_epd) + pre_bias  
+        
+        if act_type['act%s%d' % (name,i + 1)]    == 'sigmoid':
+            prev_layer = pha.pysigmoid(prev_layer, inx_phy['b%s%d' % (name,i + 1)], inx_unk['b%s%d' % (name,i + 1)])
+        elif act_type['act%s%d' % (name,i + 1)]  == 'relu':
+            prev_layer = pha.pyrelu(prev_layer, inx_phy['b%s%d' % (name,i + 1)], inx_unk['bk%s%d' % (name,i + 1)])
         elif act_type ['act%s%d' % (name,i + 1)] == 'elu':
-            prev_layer = tf.nn.elu(prev_layer)
+            prev_layer = pha.pyelu(prev_layer, inx_phy['b%s%d' % (name,i + 1)], inx_unk['b%s%d' % (name,i + 1)])
         elif act_type ['act%s%d' % (name,i + 1)] == 'none':
             prev_layer = prev_layer
         #################################################################################################################################     
@@ -84,10 +92,9 @@ def taylor_nn(prev_layer, weights, biases, com_type1, com_type2, act_type, num_o
     return prev_layer
 ###########################################################################################################################################
 
-
-
 ##Initilize the Matrix and Biases##########################################################################################################
-def initilization(widths, comT1, comT2, act, epd, dist_weights, dist_biases, scale, name='U'):
+def initilization(widths, comT1, comT2, act, epd, dist_weights, dist_biases, phyweightsA, phyweightsB, phybiasesA, phybiasesB, 
+                  scale, name='U'):
     """Create a decoder network: a dictionaries of weights, biases, activation function and expansion_order
 
     Arguments:
@@ -110,30 +117,36 @@ def initilization(widths, comT1, comT2, act, epd, dist_weights, dist_biases, sca
         expansion_order -- dictionary of expansion order
     """
     
-    weights = dict()
-    biases = dict()
-    act_type = dict()
+    weights         = dict()
+    biases          = dict()
+    act_type        = dict()
     expansion_order = dict()
-    com_type1 = dict()
-    com_type2 = dict()
-    
-    
+    com_type1       = dict()
+    com_type2       = dict()
+    phyweights      = dict() 
+    unkweights      = dict()
+    inx_phy         = dict()
+    inx_unk         = dict()
+
     for i in np.arange(len(widths)):
         ind = i + 1
-        weights['W%s%d' % (name, ind)] = weight_variable(widths[i], var_name='W%s%d' % (name, ind),
+        weights['W%s%d' % (name, ind)]        = weight_variable(widths[i], var_name='W%s%d' % (name, ind),
                                                          distribution=dist_weights[ind - 1], scale=scale)
-        biases['b%s%d' % (name, ind)]  = bias_variable([widths[i][0], 1], var_name='b%s%d' % (name, ind),
+        biases['b%s%d' % (name, ind)]         = bias_variable([widths[i][0], 1], var_name='b%s%d' % (name, ind),
                                                        distribution=dist_biases[ind - 1])
         act_type['act%s%d' % (name,ind)]      = act[i]
         expansion_order['E%s%d' % (name,ind)] = epd[i]
         
-        com_type1['com1%s%d' % (name,ind)] = comT1[i]
-        com_type2['com2%s%d' % (name,ind)] = comT2[i]
+        com_type1['com1%s%d' % (name,ind)]    = comT1[i]
+        com_type2['com2%s%d' % (name,ind)]    = comT2[i]
         
-    return weights, com_type1, com_type2, biases, act_type, expansion_order
+        phyweights['W%s%d' % (name,ind)]   = phyweightsA[i]
+        unkweights['W%s%d' % (name,ind)]   = phyweightsB[i]
+        inx_phy['b%s%d' % (name,ind)]    = phybiasesA[i]
+        inx_unk['b%s%d' % (name,ind)]    = phybiasesB[i]
+        
+    return weights, com_type1, com_type2, biases, act_type, expansion_order, phyweights, unkweights, inx_phy, inx_unk
 ###########################################################################################################################################
-
-
 
 ##Create the variable of weight matrix#####################################################################################################
 def weight_variable(shape, var_name, distribution, scale=0.1):
@@ -254,22 +267,15 @@ def create_DeepTaylor_net(params):
     ##Placeholder for the input, output, lables. Must be in tf.float32, due to constraint optimizator!!!!!!!!##############################
     x = tf.compat.v1.placeholder(tf.float32, [params['Xwidth'],params['traj_len']])
     ly = tf.compat.v1.placeholder(tf.float32, [params['lYwidth'],params['traj_len']])
-    #lz = tf.compat.v1.placeholder(tf.float32, [params['lZwidth'],params['traj_len']])
     #######################################################################################################################################
     
     UN_widths = exp_length(output_size=params['uncheckable_output_size'], epd=params['uncheckable_epd'])
     UN_widths = UN_widths.astype(np.int64)
     
-    weights, com_type1, com_type2, biases, UN_act_type, UN_expansion_order = initilization(widths=UN_widths,                                                                                                                          comT1=params['uncheckable_com_type1'],
-                                                                                           comT2=params['uncheckable_com_type2'],
-                                                                                           act=params['uncheckable_act'],
-                                                                                           epd=params['uncheckable_epd'],
-                                                                                           dist_weights=params['uncheckable_dist_weights'],
-                                                                                           dist_biases=params['uncheckable_dist_biases'],
-                                                                                           scale = 0.1, name='U')
+    weights, com_type1, com_type2, biases, act_type, expansion_order, phyweights, unkweights, inx_phy, inx_unk =                                     initilization(widths=UN_widths, comT1=params['uncheckable_com_type1'], comT2=params['uncheckable_com_type2'],                                             act=params['uncheckable_act'], epd=params['uncheckable_epd'], dist_weights=params['uncheckable_dist_weights'],                             dist_biases=params['uncheckable_dist_biases'], phyweightsA=params['uncheckable_phyweightsA'],
+                        phyweightsB=params['uncheckable_phyweightsB'], phybiasesA=params['uncheckable_phybiasesA'],                                                 phybiasesB=params['uncheckable_phybiasesB'], scale = 0.1, name='U')
     
-    y = taylor_nn(prev_layer=x, weights=weights, biases=biases, com_type1=com_type1, com_type2=com_type2, act_type=UN_act_type, 
-                  num_of_layers=params['uncheckable_num_of_layers'], expansion_order=UN_expansion_order,name='U')
+    y = taylor_nn(prev_layer=x, weights=weights, phyweights=phyweights, unkweights=unkweights, biases=biases, inx_phy=inx_phy,                               inx_unk=inx_unk,  com_type1=com_type1, com_type2=com_type2, act_type=act_type,                                                           num_of_layers=params['uncheckable_num_of_layers'], expansion_order=expansion_order,name='U')
+    
     return x, y, ly, weights, biases
-
 ###########################################################################################################################################   
